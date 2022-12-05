@@ -1,23 +1,35 @@
+import {Characteristic, HAP, PlatformAccessory, Service} from 'homebridge'
+import TuyaAccessory from './TuyaAccessory';
+
 class BaseAccessory {
-    constructor(...props) {
-        let isNew;
-        [this.platform, this.accessory, this.device, isNew = true] = [...props];
-        ({log: this.log, api: {hap: this.hap}} = this.platform);
+    protected platform: any; // fix type
+    protected accessory: PlatformAccessory;
+    protected device: TuyaAccessory;
+    protected log: any; // fix type
+    protected hap: HAP;
+
+    constructor(platform: any, accessory: any, device: any, isNew: boolean = true) {
+        this.platform = platform;
+        this.accessory = accessory;
+        this.device = device;
+
+        this.log = this.platform.log;
+        this.hap = this.platform.api.hap;
 
         if (isNew) this._registerPlatformAccessory();
 
-        this.accessory.on('identify', function(paired, callback) {
+        this.accessory.on('identify', () => {
             // ToDo: Add identification routine
             this.log("%s - identify", this.device.context.name);
-            callback();
-        }.bind(this));
+        });
 
         this.device.once('connect', () => {
             this.log('Connected to', this.device.context.name);
         });
 
         this.device.once('change', () => {
-            this.log(`Ready to handle ${this.device.context.name} (${this.device.context.type}:${this.device.context.version}) with signature ${JSON.stringify(this.device.state)}`);
+            this.log(`Ready to handle ${this.device.context.name} identified as ${this.device.context.type} (${this.device.context.version}) with signature
+${JSON.stringify(this.device.state, null, 2)}`);
 
             this._registerCharacteristics(this.device.state);
         });
@@ -25,11 +37,15 @@ class BaseAccessory {
         this.device._connect();
     }
 
+    _registerCharacteristics(state: any) {
+        throw new Error("Not implemented")
+    };
+
     _registerPlatformAccessory() {
         this.platform.registerPlatformAccessories(this.accessory);
     }
 
-    _checkServiceName(service, name) {
+    _checkServiceName(service: Service, name: string) {
         const {Characteristic} = this.hap;
 
         if (service.displayName !== name) {
@@ -39,7 +55,7 @@ class BaseAccessory {
         }
     }
 
-    _removeCharacteristic(service, characteristicType) {
+    _removeCharacteristic(service: Service, characteristicType: Characteristic) {
         if (!service || !characteristicType || !characteristicType.UUID) return;
 
         service.characteristics.some(characteristic => {
@@ -49,20 +65,21 @@ class BaseAccessory {
         });
     }
 
-    _getCustomDP(numeral) {
-        return (isFinite(numeral) && parseInt(numeral) > 0) ? String(numeral) : false;
+    _getCustomDP(numeral: string) {
+        const number = parseInt(numeral);
+        return (number > 0 && isFinite(number)) ? String(numeral) : false;
     }
 
-    _coerceBoolean(b, defaultValue) {
+    _coerceBoolean(b: string | boolean, defaultValue: boolean) {
         const df = defaultValue || false;
         return typeof b === 'boolean' ? b : (typeof b === 'string' ? b.toLowerCase().trim() === 'true' : (typeof b === 'number' ? b !== 0 : df));
     }
 
-    getState(dp, callback) {
+    getState(dp: any, callback: any) {
         if (!this.device.connected) return callback(true);
         const _callback = () => {
             if (Array.isArray(dp)) {
-                const ret = {};
+                const ret: Record<string, any> = {};
                 dp.forEach(p => {
                     ret[p] = this.device.state[p];
                 });
@@ -75,22 +92,24 @@ class BaseAccessory {
         process.nextTick(_callback);
     }
 
-    setState(dp, value, callback) {
+    setState(dp: string | number, value: any, callback: any) {
         this.setMultiState({[dp.toString()]: value}, callback);
     }
 
-    setMultiState(dps, callback) {
+    setMultiState(dps: any, callback: any) {
         if (!this.device.connected) return callback(true);
+
+        let result: Boolean = false;
         for (const dp in dps) {
             if (dps.hasOwnProperty(dp) && dps[dp] !== this.device.state[dp]){
-                this.__ret = this.device.update({[dp.toString()] : dps[dp]});
+                result = this.device.update({[dp.toString()] : dps[dp]});
             }
         }
-        callback && callback(!this.__ret);
+        callback && callback(!result);
     }
 
-    getDividedState(dp, divisor, callback) {
-        this.getState(dp, (err, data) => {
+    getDividedState(dp: any, divisor: number, callback: any) {
+        this.getState(dp, (err: any, data: any) => {
             if (err) return callback(err);
             if (!isFinite(data)) return callback(true);
 
@@ -98,39 +117,39 @@ class BaseAccessory {
         });
     }
 
-    _getDividedState(dp, divisor) {
+    _getDividedState(dp: any, divisor: number) {
         return (parseFloat(dp) / divisor) || 0;
     }
 
-    _detectColorFunction(value) {
-        this.colorFunction = this.device.context.colorFunction && {HSB: 'HSB', HEXHSB: 'HEXHSB'}[this.device.context.colorFunction.toUpperCase()];
-        if (!this.colorFunction && value) {
-            this.colorFunction = {12: 'HSB', 14: 'HEXHSB'}[value.length] || 'Unknown';
-            if (this.colorFunction) console.log(`[Tuya] Color format for ${this.device.context.name} (${this.device.context.version}) identified as ${this.colorFunction} (length: ${value.length}).`);
+    _detectColorFunction(value: string) {
+        let colorFunction = this.device.context.colorFunction && {HSB: 'HSB', HEXHSB: 'HEXHSB'}[this.device.context.colorFunction.toUpperCase()];
+        if (!colorFunction && value) {
+            colorFunction = {12: 'HSB', 14: 'HEXHSB'}[value.length] || 'Unknown';
+            if (colorFunction) console.log(`[Tuya] Color format for ${this.device.context.name} (${this.device.context.version}) identified as ${colorFunction} (length: ${value.length}).`);
         }
-        if (!this.colorFunction) {
-            this.colorFunction = 'Unknown';
+        if (!colorFunction) {
+            colorFunction = 'Unknown';
             console.log(`[Tuya] Color format for ${this.device.context.name} (${this.device.context.version}) is undetectable.`);
-        } else if (this.colorFunction === 'HSB') {
+        } else if (colorFunction === 'HSB') {
             // If not overridden by config, use the scale of 1000
             if (!this.device.context.scaleBrightness) this.device.context.scaleBrightness = 1000;
             if (!this.device.context.scaleWhiteColor) this.device.context.scaleWhiteColor = 1000;
         }
     }
 
-    convertBrightnessFromHomeKitToTuya(value) {
+    convertBrightnessFromHomeKitToTuya(value: number) {
         const min = this.device.context.minBrightness || 27;
         const scale = this.device.context.scaleBrightness || 255;
         return Math.round(((scale - min) * value + 100 * min - scale) / 99);
     }
 
-    convertBrightnessFromTuyaToHomeKit(value) {
+    convertBrightnessFromTuyaToHomeKit(value: number) {
         const min = this.device.context.minBrightness || 27;
         const scale = this.device.context.scaleBrightness || 255;
         return Math.round((99 * (value || 0) - 100 * min + scale) / (scale - min));
     }
 
-    convertColorTemperatureFromHomeKitToTuya(value) {
+    convertColorTemperatureFromHomeKitToTuya(value: number) {
         const min = this.device.context.minWhiteColor || 140;
         const max = this.device.context.maxWhiteColor || 400;
         const scale = this.device.context.scaleWhiteColor || 255;
@@ -139,7 +158,7 @@ class BaseAccessory {
         return Math.min(scale, Math.max(0, convertedValue));
     }
 
-    convertColorTemperatureFromTuyaToHomeKit(value) {
+    convertColorTemperatureFromTuyaToHomeKit(value: number) {
         const min = this.device.context.minWhiteColor || 140;
         const max = this.device.context.maxWhiteColor || 400;
         const scale = this.device.context.scaleWhiteColor || 255;
@@ -148,7 +167,7 @@ class BaseAccessory {
         return Math.min(600, Math.max(71, convertedValue));
     }
 
-    convertColorFromHomeKitToTuya(value, dpValue) {
+    convertColorFromHomeKitToTuya(value: {h: number, s: number, b: number}, dpValue: string) {
         switch (this.device.context.colorFunction) {
             case 'HSB':
                 return this.convertColorFromHomeKitToTuya_HSB(value, dpValue);
@@ -157,7 +176,7 @@ class BaseAccessory {
                 return this.convertColorFromHomeKitToTuya_HEXHSB(value, dpValue);
         }
     }
-    convertColorFromHomeKitToTuya_HEXHSB(value, dpValue) {
+    convertColorFromHomeKitToTuya_HEXHSB(value: {h: number, s: number, b: number}, dpValue: string) {
         const cached = this.convertColorFromTuya_HEXHSB_ToHomeKit(dpValue || this.device.state[this.dpColor]);
         let {h, s, b} = {...cached, ...value};
         const hsb = h.toString(16).padStart(4, '0') + Math.round(2.55 * s).toString(16).padStart(2, '0') + Math.round(2.55 * b).toString(16).padStart(2, '0');
@@ -185,6 +204,8 @@ class BaseAccessory {
                         return [t, p, b];
                     case 5:
                         return [b, p, q];
+                    default:
+                        throw new RangeError()
                 }
             })().map(c => Math.round(c).toString(16).padStart(2, '0')),
             hex = rgb.join('');
@@ -192,13 +213,13 @@ class BaseAccessory {
         return hex + hsb;
     }
 
-    convertColorFromHomeKitToTuya_HSB(value, dpValue) {
+    convertColorFromHomeKitToTuya_HSB(value: {h: number, s: number, b: number}, dpValue: any) {
         const cached = this.convertColorFromTuya_HSB_ToHomeKit(dpValue || this.device.state[this.dpColor]);
         let {h, s, b} = {...cached, ...value};
         return h.toString(16).padStart(4, '0') + (10 * s).toString(16).padStart(4, '0') + (10 * b).toString(16).padStart(4, '0');
     }
 
-    convertColorFromTuyaToHomeKit(value) {
+    convertColorFromTuyaToHomeKit(value: string) {
         switch (this.device.context.colorFunction) {
             case 'HSB':
                 return this.convertColorFromTuya_HSB_ToHomeKit(value);
@@ -208,8 +229,8 @@ class BaseAccessory {
         }
     }
 
-    convertColorFromTuya_HEXHSB_ToHomeKit(value) {
-        const [, h, s, b] = (value || '0000000000ffff').match(/^.{6}([0-9a-f]{4})([0-9a-f]{2})([0-9a-f]{2})$/i) || [0, '0', 'ff', 'ff'];
+    convertColorFromTuya_HEXHSB_ToHomeKit(value: string) {
+        const [, h, s, b] = (value || '0000000000ffff').match(/^.{6}([0-9a-f]{4})([0-9a-f]{2})([0-9a-f]{2})$/i) || ['', '0', 'ff', 'ff'];
         return {
             h: parseInt(h, 16),
             s: Math.round(parseInt(s, 16) / 2.55),
@@ -217,8 +238,8 @@ class BaseAccessory {
         };
     }
 
-    convertColorFromTuya_HSB_ToHomeKit(value) {
-        const [, h, s, b] = (value || '000003e803e8').match(/^([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})$/i) || [0, '0', '3e8', '3e8'];
+    convertColorFromTuya_HSB_ToHomeKit(value: string) {
+        const [, h, s, b] = (value || '000003e803e8').match(/^([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})$/i) || ['', '0', '3e8', '3e8'];
         return {
             h: parseInt(h, 16),
             s: Math.round(parseInt(s, 16) / 10),
@@ -232,7 +253,7 @@ class BaseAccessory {
      * Neil Bartlett (http://www.zombieprototypes.com/?p=210)
      */
 
-    convertHomeKitColorTemperatureToHomeKitColor(value) {
+    convertHomeKitColorTemperatureToHomeKitColor(value: number) {
         const dKelvin = 10000 / value;
         const rgb = [
             dKelvin > 66 ? 351.97690566805693 + 0.114206453784165 * (dKelvin - 55) - 40.25366309332127 * Math.log(dKelvin - 55) : 255,
