@@ -1,11 +1,11 @@
-import {Characteristic, HAP, PlatformAccessory, Service} from 'homebridge'
+import {Characteristic, HAP, Logging, PlatformAccessory, Service} from 'homebridge'
 import TuyaAccessory from './TuyaAccessory';
 
 class BaseAccessory {
     protected platform: any; // fix type
     protected accessory: PlatformAccessory;
     protected device: TuyaAccessory;
-    protected log: any; // fix type
+    protected log: Logging;
     protected hap: HAP;
 
     constructor(platform: any, accessory: any, device: any, isNew: boolean = true) {
@@ -75,7 +75,7 @@ ${JSON.stringify(this.device.state, null, 2)}`);
         return typeof b === 'boolean' ? b : (typeof b === 'string' ? b.toLowerCase().trim() === 'true' : (typeof b === 'number' ? b !== 0 : df));
     }
 
-    getState(dp: any, callback: any) {
+    getState(dp: any, callback: (err: any, data: any) => void) {
         if (!this.device.connected) return callback(true);
         const _callback = () => {
             if (Array.isArray(dp)) {
@@ -289,3 +289,4 @@ ${JSON.stringify(this.device.state, null, 2)}`);
 }
 
 module.exports = BaseAccessory;
+export default BaseAccessory;
