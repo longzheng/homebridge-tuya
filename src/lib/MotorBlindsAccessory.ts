@@ -173,30 +173,11 @@ class MotorBlindsAccessory extends BaseAccessory {
 
         this.targetPosition = this.convertPositionNumber(value);
 
-        // Device expects open or close commands only, or stop with a position for partial open/close.
-        const commandDps = (() => {
-            switch (this.targetPosition) {
-                case DEVICE_POSITION_OPEN:
-                    return {
-                        [this.dpCommand.toString()]: this.cmdOpen
-                    };
-                    break;
-                case DEVICE_POSITION_CLOSE:
-                    return {
-                        [this.dpCommand.toString()]: this.cmdClose
-                    };
-                    break;
-                default:
-                    return {
-                        // stop first
-                        [this.dpCommand.toString()]: this.cmdStop,
-                        // set target position
-                        [this.dpPositionTarget.toString()]: this.targetPosition
-                    };
-            }
-        })();
-
-        return this.setMultiState(commandDps, callback);
+        // Device expects stop with a position
+        return this.setMultiState({
+            [this.dpCommand.toString()]: this.cmdOpen,
+            [this.dpPositionTarget.toString()]: this.targetPosition
+        }, callback);
     }
 }
 
